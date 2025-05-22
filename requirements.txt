@@ -1,0 +1,8 @@
+# Chess Game Requirements
+# This game uses only built-in Python libraries
+
+# tkinter - GUI framework (included with Python)
+# copy - for deep copying board states (included with Python)
+
+# No external dependencies required!
+# Just run: python chess_game.py 
