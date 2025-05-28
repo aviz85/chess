@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Game</title>
+    <style>
+        .board {
+            display: grid;
+            grid-template-columns: repeat(8, 50px);
+            gap: 2px;
+            background: #brown;
+            padding: 10px;
+            width: fit-content;
+            margin: 20px auto;
+        }
+        .square {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 30px;
+            cursor: pointer;
+        }
+        .white {
+            background: #fff;
+        }
+        .black {
+            background: #ccc;
+        }
+        .selected {
+            background: yellow !important;
+        }
+        .valid-move {
+            background: lightgreen !important;
+        }
+        .info {
+            text-align: center;
+            margin: 20px;
+            font-size: 20px;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="info" id="info">Current Player: White</div>
+    <div class="board" id="board"></div>
+    <div class="controls">
+        <button onclick="resetGame()">New Game</button>
+    </div>
+    <script>
+        const pieceSymbols = {
+            'white,king': '♔', 'white,queen': '♕', 'white,rook': '♖',
+            'white,bishop': '♗', 'white,knight': '♘', 'white,pawn': '♙',
+            'black,king': '♚', 'black,queen': '♛', 'black,rook': '♜',
+            'black,bishop': '♝', 'black,knight': '♞', 'black,pawn': '♟'
+        };
+
+        let selectedSquare = null;
+        let gameState = null;
+
+        async function fetchGameState() {
+            const response = await fetch('http://localhost:5000/game-state');
+            gameState = await response.json();
+            updateBoard();
+        }
+
+        function createBoard() {
+            const board = document.getElementById('board');
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const square = document.createElement('div');
+                    square.className = `square ${(row + col) % 2 === 0 ? 'white' : 'black'}`;
+                    square.dataset.row = row;
+                    square.dataset.col = col;
+                    square.onclick = () => handleSquareClick(row, col);
+                    board.appendChild(square);
+                }
+            }
+        }
+
+        function updateBoard() {
+            const squares = document.querySelectorAll('.square');
+            squares.forEach(square => {
+                const row = parseInt(square.dataset.row);
+                const col = parseInt(square.dataset.col);
+                const piece = gameState.board[row][col];
+                square.textContent = piece ? pieceSymbols[piece.join(',')] : '';
+            });
+
+            document.getElementById('info').textContent = 
+                `Current Player: ${gameState.currentPlayer.charAt(0).toUpperCase() + gameState.currentPlayer.slice(1)}` +
+                (gameState.check ? ' - CHECK!' : '') +
+                (gameState.checkmate ? ' - CHECKMATE!' : '') +
+                (gameState.stalemate ? ' - STALEMATE!' : '');
+        }
+
+        async function handleSquareClick(row, col) {
+            if (gameState.gameOver) return;
+
+            const squares = document.querySelectorAll('.square');
+            if (!selectedSquare) {
+                const piece = gameState.board[row][col];
+                if (piece && piece[0] === gameState.currentPlayer) {
+                    selectedSquare = [row, col];
+                    squares.forEach(s => s.classList.remove('selected', 'valid-move'));
+                    squares[row * 8 + col].classList.add('selected');
+                }
+            } else {
+                if (selectedSquare[0] === row && selectedSquare[1] === col) {
+                    selectedSquare = null;
+                    squares.forEach(s => s.classList.remove('selected', 'valid-move'));
+                    return;
+                }
+
+                const response = await fetch('http://localhost:5000/move', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        from: selectedSquare,
+                        to: [row, col]
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    gameState = result.gameState;
+                    selectedSquare = null;
+                    squares.forEach(s => s.classList.remove('selected', 'valid-move'));
+                    updateBoard();
+                }
+            }
+        }
+
+        async function resetGame() {
+            const response = await fetch('http://localhost:5000/reset', {
+                method: 'POST'
+            });
+            const result = await response.json();
+            if (result.success) {
+                gameState = result.gameState;
+                selectedSquare = null;
+                const squares = document.querySelectorAll('.square');
+                squares.forEach(s => s.classList.remove('selected', 'valid-move'));
+                updateBoard();
+            }
+        }
+
+        createBoard();
+        fetchGameState();
+    </script>
+</body>
+</html>

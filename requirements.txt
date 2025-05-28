@@ -1,8 +1,5 @@
 # Chess Game Requirements
-# This game uses only built-in Python libraries
+# This game uses Flask for the web server
 
-# tkinter - GUI framework (included with Python)
-# copy - for deep copying board states (included with Python)
-
-# No external dependencies required!
-# Just run: python chess_game.py 
+Flask==2.0.1
+flask-cors==4.0.0
