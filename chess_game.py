@@ -25,9 +25,16 @@ class ChessGame:
         self.en_passant_target = None
         self.move_history = []
         
+        # Draw condition trackers
+        self.moves_since_capture = 0
+        self.position_history = []
+        
         # Create GUI
         self.create_gui()
         
+        # Save initial position
+        self.save_position()
+    
     def create_initial_board(self):
         """Create the initial chess board setup"""
         board = [[None for _ in range(8)] for _ in range(8)]
@@ -45,6 +52,173 @@ class ChessGame:
             
         return board
     
+    def save_position(self):
+        """Save current board position for repetition detection"""
+        position = []
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece:
+                    position.append((row, col, piece[0], piece[1]))
+        position = tuple(sorted(position))  # Make hashable
+        self.position_history.append(position)
+    
+    def is_threefold_repetition(self):
+        """Check if current position has occurred three times"""
+        if len(self.position_history) < 3:
+            return False
+        
+        current_pos = self.position_history[-1]
+        repetitions = sum(1 for pos in self.position_history if pos == current_pos)
+        return repetitions >= 3
+    
+    def is_fifty_move_rule(self):
+        """Check if fifty moves have been made without pawn movement or capture"""
+        return self.moves_since_capture >= 100  # 50 moves = 100 half-moves
+    
+    def has_insufficient_material(self):
+        """Check if there is insufficient material for checkmate"""
+        pieces = {'white': [], 'black': []}
+        
+        # Count pieces for each color
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece:
+                    pieces[piece[0]].append(piece[1])
+        
+        for color in ['white', 'black']:
+            piece_count = len(pieces[color])
+            
+            # King vs King
+            if piece_count == 1:
+                continue
+            
+            # King and Bishop/Knight vs King
+            if piece_count == 2 and ('bishop' in pieces[color] or 'knight' in pieces[color]):
+                continue
+            
+            # More pieces means sufficient material
+            return False
+        
+        return True
+    
+    def make_move(self, from_pos, to_pos):
+        """Execute a move on the board"""
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        piece = self.board[from_row][from_col]
+        color, piece_type = piece
+        
+        # Check if move is a capture or pawn move
+        is_capture = self.board[to_row][to_col] is not None
+        is_pawn_move = piece_type == 'pawn'
+        
+        if is_capture or is_pawn_move:
+            self.moves_since_capture = 0
+        else:
+            self.moves_since_capture += 1
+        
+        # Handle special moves
+        if piece_type == 'king':
+            # Castling
+            if abs(to_col - from_col) == 2:
+                if to_col > from_col:  # Kingside
+                    self.board[from_row][5] = self.board[from_row][7]
+                    self.board[from_row][7] = None
+                else:  # Queenside
+                    self.board[from_row][3] = self.board[from_row][0]
+                    self.board[from_row][0] = None
+            
+            # Update king moved flag
+            if color == 'white':
+                self.white_king_moved = True
+            else:
+                self.black_king_moved = True
+        
+        elif piece_type == 'rook':
+            # Update rook moved flags
+            if color == 'white':
+                if from_col == 0:
+                    self.white_rook_a_moved = True
+                elif from_col == 7:
+                    self.white_rook_h_moved = True
+            else:
+                if from_col == 0:
+                    self.black_rook_a_moved = True
+                elif from_col == 7:
+                    self.black_rook_h_moved = True
+        
+        elif piece_type == 'pawn':
+            # En passant capture
+            if self.en_passant_target == (to_row, to_col):
+                capture_row = to_row + (1 if color == 'white' else -1)
+                self.board[capture_row][to_col] = None
+            
+            # Set en passant target for next turn
+            if abs(to_row - from_row) == 2:
+                self.en_passant_target = (from_row + (to_row - from_row) // 2, from_col)
+            else:
+                self.en_passant_target = None
+            
+            # Pawn promotion
+            if (color == 'white' and to_row == 0) or (color == 'black' and to_row == 7):
+                self.board[to_row][to_col] = (color, 'queen')  # Auto-promote to queen
+                self.board[from_row][from_col] = None
+                return
+        else:
+            self.en_passant_target = None
+        
+        # Make the move
+        self.board[to_row][to_col] = piece
+        self.board[from_row][from_col] = None
+        
+        # Add to move history and save position
+        self.move_history.append((from_pos, to_pos, piece))
+        self.save_position()
+    
+    def check_game_state(self):
+        """Check if the game has ended"""
+        if self.is_checkmate(self.current_player):
+            winner = 'Black' if self.current_player == 'white' else 'White'
+            messagebox.showinfo("Game Over", f"Checkmate! {winner} wins!")
+            self.game_over = True
+        elif self.is_stalemate(self.current_player):
+            messagebox.showinfo("Game Over", "Stalemate! It's a draw!")
+            self.game_over = True
+        elif self.is_threefold_repetition():
+            messagebox.showinfo("Game Over", "Draw by threefold repetition!")
+            self.game_over = True
+        elif self.is_fifty_move_rule():
+            messagebox.showinfo("Game Over", "Draw by fifty-move rule!")
+            self.game_over = True
+        elif self.has_insufficient_material():
+            messagebox.showinfo("Game Over", "Draw by insufficient material!")
+            self.game_over = True
+        elif self.is_in_check(self.current_player):
+            self.info_label.config(text=f"Current Player: {self.current_player.title()} - CHECK!")
+    
+    def reset_game(self):
+        """Reset the game to initial state"""
+        self.board = self.create_initial_board()
+        self.current_player = 'white'
+        self.selected_piece = None
+        self.selected_pos = None
+        self.game_over = False
+        self.white_king_moved = False
+        self.black_king_moved = False
+        self.white_rook_a_moved = False
+        self.white_rook_h_moved = False
+        self.black_rook_a_moved = False
+        self.black_rook_h_moved = False
+        self.en_passant_target = None
+        self.move_history = []
+        self.moves_since_capture = 0
+        self.position_history = []
+        self.info_label.config(text=f"Current Player: {self.current_player.title()}")
+        self.save_position()
+        self.update_board_display()
+
     def create_gui(self):
         """Create the graphical user interface"""
         # Create main frame
@@ -322,75 +496,6 @@ class ChessGame:
         
         return True
     
-    def make_move(self, from_pos, to_pos):
-        """Execute a move on the board"""
-        from_row, from_col = from_pos
-        to_row, to_col = to_pos
-        piece = self.board[from_row][from_col]
-        color, piece_type = piece
-        
-        # Handle special moves
-        if piece_type == 'king':
-            # Castling
-            if abs(to_col - from_col) == 2:
-                if to_col > from_col:  # Kingside
-                    self.board[from_row][5] = self.board[from_row][7]
-                    self.board[from_row][7] = None
-                else:  # Queenside
-                    self.board[from_row][3] = self.board[from_row][0]
-                    self.board[from_row][0] = None
-            
-            # Update king moved flag
-            if color == 'white':
-                self.white_king_moved = True
-            else:
-                self.black_king_moved = True
-        
-        elif piece_type == 'rook':
-            # Update rook moved flags
-            if color == 'white':
-                if from_col == 0:
-                    self.white_rook_a_moved = True
-                elif from_col == 7:
-                    self.white_rook_h_moved = True
-            else:
-                if from_col == 0:
-                    self.black_rook_a_moved = True
-                elif from_col == 7:
-                    self.black_rook_h_moved = True
-        
-        elif piece_type == 'pawn':
-            # En passant capture
-            if self.en_passant_target == (to_row, to_col):
-                capture_row = to_row + (1 if color == 'white' else -1)
-                self.board[capture_row][to_col] = None
-            
-            # Set en passant target for next turn
-            if abs(to_row - from_row) == 2:
-                self.en_passant_target = (from_row + (to_row - from_row) // 2, from_col)
-            else:
-                self.en_passant_target = None
-            
-            # Pawn promotion
-            if (color == 'white' and to_row == 0) or (color == 'black' and to_row == 7):
-                self.board[to_row][to_col] = (color, 'queen')  # Auto-promote to queen
-                self.board[from_row][from_col] = None
-                return
-        else:
-            self.en_passant_target = None
-        
-        # Make the move
-        self.board[to_row][to_col] = piece
-        self.board[from_row][from_col] = None
-        
-        # Add to move history
-        self.move_history.append((from_pos, to_pos, piece))
-    
-    def switch_player(self):
-        """Switch the current player"""
-        self.current_player = 'black' if self.current_player == 'white' else 'white'
-        self.info_label.config(text=f"Current Player: {self.current_player.title()}")
-    
     def is_in_check(self, color):
         """Check if a player's king is in check"""
         return self.is_position_in_check(self.board, self.find_king(color), color)
@@ -522,35 +627,10 @@ class ChessGame:
             return False
         return len(self.get_all_valid_moves(color)) == 0
     
-    def check_game_state(self):
-        """Check if the game has ended"""
-        if self.is_checkmate(self.current_player):
-            winner = 'Black' if self.current_player == 'white' else 'White'
-            messagebox.showinfo("Game Over", f"Checkmate! {winner} wins!")
-            self.game_over = True
-        elif self.is_stalemate(self.current_player):
-            messagebox.showinfo("Game Over", "Stalemate! It's a draw!")
-            self.game_over = True
-        elif self.is_in_check(self.current_player):
-            self.info_label.config(text=f"Current Player: {self.current_player.title()} - CHECK!")
-    
-    def reset_game(self):
-        """Reset the game to initial state"""
-        self.board = self.create_initial_board()
-        self.current_player = 'white'
-        self.selected_piece = None
-        self.selected_pos = None
-        self.game_over = False
-        self.white_king_moved = False
-        self.black_king_moved = False
-        self.white_rook_a_moved = False
-        self.white_rook_h_moved = False
-        self.black_rook_a_moved = False
-        self.black_rook_h_moved = False
-        self.en_passant_target = None
-        self.move_history = []
+    def switch_player(self):
+        """Switch the current player"""
+        self.current_player = 'black' if self.current_player == 'white' else 'white'
         self.info_label.config(text=f"Current Player: {self.current_player.title()}")
-        self.update_board_display()
     
     def run(self):
         """Start the game"""
@@ -558,4 +638,4 @@ class ChessGame:
 
 if __name__ == "__main__":
     game = ChessGame()
-    game.run() 
+    game.run()

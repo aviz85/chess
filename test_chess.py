@@ -89,6 +89,28 @@ def test_check_detection():
     
     print("✅ Check detection test passed")
 
+def test_draw_conditions():
+    """Test draw conditions"""
+    game = ChessGame()
+    
+    # Test insufficient material
+    game.board = [[None for _ in range(8)] for _ in range(8)]
+    game.board[0][0] = ('white', 'king')
+    game.board[7][7] = ('black', 'king')
+    game.board[7][6] = ('black', 'bishop')
+    assert game.has_insufficient_material(), "King vs King+Bishop should be insufficient material"
+    
+    # Test fifty move rule
+    game.moves_since_capture = 100
+    assert game.is_fifty_move_rule(), "50 move rule should trigger after 100 half-moves"
+    
+    # Test threefold repetition
+    position = game.position_history[0]
+    game.position_history = [position] * 3
+    assert game.is_threefold_repetition(), "Same position three times should trigger threefold repetition"
+    
+    print("✅ Draw conditions test passed")
+
 def run_all_tests():
     """Run all tests"""
     print("🚀 Starting chess game tests...")
@@ -100,6 +122,7 @@ def run_all_tests():
         test_piece_movement()
         test_invalid_moves()
         test_check_detection()
+        test_draw_conditions()
         
         print()
         print("🎉 All tests passed! The chess game is working correctly.")
@@ -113,4 +136,4 @@ def run_all_tests():
         sys.exit(1)
 
 if __name__ == "__main__":
-    run_all_tests() 
+    run_all_tests()
